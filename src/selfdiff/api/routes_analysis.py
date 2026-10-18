@@ -71,6 +71,9 @@ def preview(request: Request, body: Scope):
 
 def start(request, body, mode):
     repo, scope = request.app.state.repo, body.scope.model_dump(exclude_none=True)
+    if repo.workspace(scope['workspace_id'])['demo']:
+        from selfdiff.demo import demo_run
+        return {'id': demo_run(repo, dict(scope, claim=body.claim, theme=body.theme, period_a=body.period_a, period_b=body.period_b), mode)}
     provider = provider_for(request, scope['workspace_id'])
     if mode == 'challenge':
         rid = challenge(repo, scope, body.claim)

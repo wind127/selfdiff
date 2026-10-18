@@ -32,6 +32,12 @@ def new_workspace(request: Request, body: WorkspaceBody):
     return request.app.state.repo.create_workspace(body.name)
 
 
+@router.post('/demo')
+def new_demo(request: Request):
+    from selfdiff.demo import create_demo_workspace
+    return {'id': create_demo_workspace(request.app.state.repo)}
+
+
 def remember(request, wid, preview):
     request.app.state.repo.workspace(wid)
     previews = request.app.state.previews
