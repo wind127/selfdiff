@@ -108,7 +108,7 @@ class Repository:
             # Conservatively invalidate the entire workspace's derived content.
             c.execute('DELETE FROM insight_revisions WHERE insight_id IN (SELECT id FROM insights WHERE workspace_id=?)', (wid,))
             c.execute('DELETE FROM evidence WHERE workspace_id=?', (wid,))
-            c.execute("UPDATE insights SET content='{}',status='invalidated',invalidated=1 WHERE workspace_id=?", (wid,))
+            c.execute("UPDATE insights SET content='{}',pattern_key='deleted:'||id,status='invalidated',invalidated=1 WHERE workspace_id=?", (wid,))
             c.execute("UPDATE profile_snapshots SET content='{}',invalidated=1 WHERE workspace_id=?", (wid,))
             c.execute('DELETE FROM analysis_batches WHERE workspace_id=?', (wid,))
             c.execute("UPDATE analysis_runs SET result=NULL,error=NULL,status=CASE WHEN status IN ('queued','running') THEN 'cancelled' ELSE 'interrupted' END,scope='{}' WHERE workspace_id=?", (wid,))
