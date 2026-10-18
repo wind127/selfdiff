@@ -14,7 +14,7 @@ def prepared(db):
     for cid in ['one', 'two']:
         repo.import_preview(w, preview_upload('normalized', 'a.json', sample(cid=cid)))
     with db.transaction() as c:
-        c.execute("INSERT INTO analysis_runs(id,workspace_id,mode,status,data_version,scope) VALUES('run',?,'profile','running',2,'{}')", (w,))
+        c.execute("INSERT INTO analysis_runs(id,workspace_id,mode,status,data_version,scope) VALUES('run',?,'profile','succeeded',2,'{}')", (w,))
     refs = [dict(message_id=m['id'], version=1, quote='我喜欢先做小版本。', relation='support') for m in repo.messages(w)]
     draft = dict(pattern_key='small-start', dimension='action_results', kind='success_condition', title='小步开始', observation='两次明确选择先做小版本。', context='启动新项目时', alternatives=['也可能是这两次时间有限。'], question='其他场景也适用吗？', evidence=refs)
     return repo, w, draft

@@ -3,6 +3,7 @@ from selfdiff.analysis.jobs import create_run, get_run
 from selfdiff.sources.common import timestamp
 from selfdiff.errors import AppError
 from selfdiff.store.repository import uid, encoded
+from selfdiff.insights import list_insights
 
 
 def challenge(repo, scope, claim):
@@ -29,12 +30,15 @@ def save_snapshot(repo, wid, run_id):
     if run['status'] not in ('succeeded', 'partial', 'insufficient'):
         raise AppError('snapshot', '任务未结束，暂不能保存快照。', 409)
     sid = uid()
+    frozen = (run['result'] or {}).get('insights', [])
+    current_insights = {i['id']: i for i in list_insights(repo, wid, include_rejected=True) if i['run_id'] == run_id}
+    findings = [current_insights.get(i['id'], i) for i in frozen]
     with repo.db.transaction() as c:
         current = c.execute('SELECT data_version FROM workspaces WHERE id=?', (wid,)).fetchone()[0]
         if current != run['data_version']:
             raise AppError('stale', '资料已更新或删除，请重新分析后保存。', 409)
         c.execute('INSERT INTO profile_snapshots(id,workspace_id,run_id,content) VALUES(?,?,?,?)',
-                  (sid, wid, run_id, encoded({'scope': run['scope'], 'result': run['result'], 'analyzed_at': run['created_at'], 'data_version': current})))
+                  (sid, wid, run_id, encoded({'scope': run['scope'], 'result': run['result'], 'insights': findings, 'analyzed_at': run['created_at'], 'data_version': current})))
     return sid
 
 

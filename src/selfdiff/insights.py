@@ -21,12 +21,30 @@ def save_insight(repo, run_id, draft):
     checked = validate_evidence(repo, wid, draft.evidence)
     if not checked['valid']:
         return {'accepted': False, 'reason': 'invalid_evidence'}
+    scope = json.loads(run['scope'])
+    for ref in draft.evidence:
+        message = repo.message(wid, ref.message_id, ref.version)
+        time = message['occurred_at']
+        if not message['active'] or message['active_version'] != ref.version:
+            return {'accepted': False, 'reason': 'outside_current_version'}
+        if scope.get('source_ids') and message['source'] not in scope['source_ids']:
+            return {'accepted': False, 'reason': 'outside_scope'}
+        if (scope.get('start') and (not time or time < scope['start'])) or (scope.get('end') and (not time or time >= scope['end'])):
+            return {'accepted': False, 'reason': 'outside_scope'}
+        if run['mode'] == 'comparison' and not any(time and p['start'] <= time < p['end'] for p in (scope['period_a'], scope['period_b'])):
+            return {'accepted': False, 'reason': 'outside_periods'}
     supports = [r for r in checked['records'] if r['relation'] == 'support']
     independent = {r['independent_id'] for r in supports}
     if not supports or (draft.kind in ('recurring_blocker', 'success_condition') and len(independent) < 2):
         return {'accepted': False, 'reason': 'insufficient_independent_evidence'}
     if draft.kind == 'background' and any(repo.message(wid, r['message_id'], r['version'])['content_kind'] != 'self_report' for r in supports):
         return {'accepted': False, 'reason': 'not_explicit_self_report'}
+    if draft.kind == 'period_change' or run['mode'] == 'comparison':
+        dates = {r['occurred_at'] for r in supports if r['occurred_at']}
+        if len(dates) < 2:
+            return {'accepted': False, 'reason': 'insufficient_time_evidence'}
+        if run['mode'] == 'comparison' and not all(any(p['start'] <= date < p['end'] for date in dates) for p in (scope['period_a'], scope['period_b'])):
+            return {'accepted': False, 'reason': 'missing_period_evidence'}
     key = unicodedata.normalize('NFKC', draft.pattern_key).casefold().strip()
     key = re.sub(r'\s+', '-', key)
     content = draft.model_dump()
@@ -42,15 +60,19 @@ def save_insight(repo, run_id, draft):
         old = c.execute('SELECT id,status,invalidated FROM insights WHERE workspace_id=? AND pattern_key=?', (wid, key)).fetchone()
         if old and old['status'] in ('rejected', 'confirmed', 'partial'):
             return {'accepted': False, 'reason': 'preserve_user_review'}
+        # Semantic identity cannot be reliably established from a model's key. After a rejection,
+        # quarantine fresh model claims until the person explicitly reviews them.
+        quarantine = bool(c.execute("SELECT 1 FROM insights WHERE workspace_id=? AND status='rejected' LIMIT 1", (wid,)).fetchone())
+        status = 'review_required' if quarantine else 'pending'
         iid = old['id'] if old else uid()
         if old:
-            c.execute("UPDATE insights SET content=?,run_id=?,invalidated=0,status='pending' WHERE id=?", (encoded(content), run_id, iid))
+            c.execute('UPDATE insights SET content=?,run_id=?,invalidated=0,status=? WHERE id=?', (encoded(content), run_id, status, iid))
             c.execute('DELETE FROM evidence WHERE insight_id=?', (iid,))
         else:
-            c.execute('INSERT INTO insights(id,workspace_id,run_id,pattern_key,dimension,kind,content) VALUES(?,?,?,?,?,?,?)', (iid, wid, run_id, key, draft.dimension, draft.kind, encoded(content)))
+            c.execute('INSERT INTO insights(id,workspace_id,run_id,pattern_key,dimension,kind,content,status) VALUES(?,?,?,?,?,?,?,?)', (iid, wid, run_id, key, draft.dimension, draft.kind, encoded(content), status))
         for ref in draft.evidence:
             c.execute('INSERT INTO evidence(id,insight_id,workspace_id,message_id,version,quote,relation) VALUES(?,?,?,?,?,?,?)', (uid(), iid, wid, ref.message_id, ref.version, ref.quote, ref.relation))
-    return {'accepted': True, 'id': iid}
+    return {'accepted': not quarantine, 'id': iid, 'reason': 'explicit_review_required' if quarantine else None}
 
 
 def list_insights(repo, wid, include_rejected=False):
@@ -59,9 +81,9 @@ def list_insights(repo, wid, include_rejected=False):
         rows = c.execute('SELECT * FROM insights WHERE workspace_id=? AND invalidated=0 ORDER BY rowid DESC', (wid,)).fetchall()
         result = []
         for r in rows:
-            if r['status'] == 'rejected' and not include_rejected:
+            if r['status'] in ('rejected', 'review_required') and not include_rejected:
                 continue
-            data = dict(json.loads(r['content']), id=r['id'], status=r['status'], revision=r['revision'])
+            data = dict(json.loads(r['content']), id=r['id'], run_id=r['run_id'], status=r['status'], revision=r['revision'])
             data['evidence'] = [dict(e) for e in c.execute('SELECT e.message_id,e.version,e.quote,e.relation,v.occurred_at,m.conversation_id,c.title,c.source FROM evidence e JOIN messages m ON m.id=e.message_id JOIN message_versions v ON v.message_id=e.message_id AND v.version=e.version JOIN conversations c ON c.id=m.conversation_id WHERE e.insight_id=?', (r['id'],))]
             data['history'] = [dict(h) for h in c.execute('SELECT version,verdict,text,reason,origin,created_at FROM insight_revisions WHERE insight_id=? ORDER BY version', (r['id'],))]
             data['user_text'] = data['history'][-1]['text'] if data['history'] else ''

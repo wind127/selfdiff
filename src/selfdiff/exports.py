@@ -22,6 +22,11 @@ def export_profile(repo, wid, format):
         lines += ['## '+item['title'], '', '状态：'+item['status'], item['user_text'] or item['observation'], '', '情境：'+item['context'], '', '其他解释：'+'；'.join(item['alternatives']), '', '待确认：'+item['question'], '']
         for ref in item['evidence']:
             lines += ['> '+ref['quote'].replace('\n', '\n> '), '', f"{ref['relation']} · {ref['source']} · {ref['occurred_at'] or '时间未知'}", '']
+        for revision in item['history']:
+            lines += [f"### 本人修订 v{revision['version']} · {revision['verdict']}", '', revision['text'], '', '理由：'+revision['reason'], '', '记录时间：'+revision['created_at'], '']
+    # The complete Markdown archive preserves the same snapshot/history payload as JSON.
+    for snapshot in data['snapshots']:
+        lines += ['## 历史快照 · '+snapshot['created_at'], '', '    '+json.dumps(snapshot, ensure_ascii=False).replace('\n', '\n    '), '']
     return '\n'.join(lines).encode()
 
 

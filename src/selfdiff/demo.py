@@ -1,7 +1,7 @@
 from importlib.resources import files
 import json
 from selfdiff.sources.ingest import preview_upload
-from selfdiff.insights import save_insight
+from selfdiff.insights import save_insight, list_insights
 from selfdiff.analysis.jobs import create_run, get_run
 from selfdiff.store.repository import encoded
 from selfdiff.errors import AppError
@@ -31,8 +31,9 @@ def create_demo_workspace(repo):
         outcome = save_insight(repo, rid, draft)
         if not outcome['accepted']:
             raise RuntimeError('Synthetic demo evidence failed validation')
+    findings = list_insights(repo, wid)
     with repo.db.transaction() as c:
-        c.execute("UPDATE analysis_runs SET status='succeeded',result=? WHERE id=?", (encoded({'demo':True,'accepted':6,'summary':'预创作的合成示例；没有调用模型。'}),rid))
+        c.execute("UPDATE analysis_runs SET status='succeeded',result=? WHERE id=?", (encoded({'demo':True,'accepted':6,'insights':findings,'summary':'预创作的合成示例；没有调用模型。'}),rid))
     return wid
 
 
@@ -42,6 +43,7 @@ def demo_run(repo, scope, mode):
     rid = create_run(repo, scope, mode)
     summary = ('表面上你更换了几次工具形式，但持续围绕“让零散材料再次产生价值”。换形式和换目标需要区分。'
                if mode == 'challenge' else '一月倾向先完成整体规划，九月倾向先验证一个场景。项目阶段不同也是合理解释，需本人确认。')
+    findings = [i for i in list_insights(repo, scope['workspace_id']) if i['dimension'] in (['interests','thinking_decisions'] if mode == 'challenge' else ['change'])]
     with repo.db.transaction() as c:
-        c.execute("UPDATE analysis_runs SET status='succeeded',total_batches=1,completed_batches=1,result=? WHERE id=?", (encoded({'demo':True,'summary':summary,'classification':'uncertain','note':'这是预设情境的合成演示，没有分析真实用户，也未调用模型。'}),rid))
+        c.execute("UPDATE analysis_runs SET status='succeeded',total_batches=1,completed_batches=1,result=? WHERE id=?", (encoded({'demo':True,'summary':summary,'insights':findings,'classification':'uncertain','note':'这是预设情境的合成演示，没有分析真实用户，也未调用模型。'}),rid))
     return rid

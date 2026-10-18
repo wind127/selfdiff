@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS conversations (
 CREATE TABLE IF NOT EXISTS messages (
  id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, conversation_id TEXT NOT NULL,
  external_id TEXT NOT NULL, role TEXT NOT NULL, content_kind TEXT NOT NULL DEFAULT 'uncertain',
- occurred_at TEXT, active_version INTEGER NOT NULL DEFAULT 1,
+ occurred_at TEXT, active_version INTEGER NOT NULL DEFAULT 1, active INTEGER NOT NULL DEFAULT 1,
  UNIQUE(conversation_id,external_id), UNIQUE(id,workspace_id),
  FOREIGN KEY(conversation_id,workspace_id) REFERENCES conversations(id,workspace_id) ON DELETE CASCADE);
 CREATE TABLE IF NOT EXISTS message_versions (

@@ -5,7 +5,7 @@ from pydantic import Field
 from selfdiff.models import StrictModel, Scope
 from selfdiff.analysis.provider import Provider
 from selfdiff.analysis.pipeline import prepare_analysis, execute_run
-from selfdiff.analysis.jobs import create_run, get_run, cancel_run
+from selfdiff.analysis.jobs import create_run, get_run, cancel_run, list_runs
 from selfdiff.comparison import challenge, compare_periods
 from selfdiff.errors import AppError
 
@@ -105,6 +105,11 @@ def new_challenge(request: Request, body: AnalysisBody):
 @router.post('/comparisons')
 def new_comparison(request: Request, body: AnalysisBody):
     return start(request, body, 'comparison')
+
+
+@router.get('/runs')
+def read_runs(request: Request, workspace_id: str):
+    return list_runs(request.app.state.repo, workspace_id)
 
 
 @router.get('/runs/{rid}')

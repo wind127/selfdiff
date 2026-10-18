@@ -3,13 +3,14 @@ import json
 from selfdiff.errors import AppError
 from selfdiff.models import InsightDraft
 from selfdiff.evidence import validate_evidence
-from selfdiff.insights import save_insight
+from selfdiff.insights import save_insight, list_insights
 from selfdiff.store.repository import encoded, uid
 from .jobs import get_run
 from .prompts import prompt, SCHEMA
 
 MAX_CHARS = 24000
 MAX_MESSAGES = 40
+MAX_REVIEWS = 64
 
 
 def material_for(repo, scope):
@@ -52,6 +53,37 @@ def _alive(repo, run):
         return True
 
 
+def review_context(material, candidate):
+    """Reserve both comparison periods before adding supporting and other contexts."""
+    budget = MAX_CHARS - len(encoded(candidate)) - 512
+    if budget < 500:
+        return None
+    refs = {(r['message_id'], r['version']): r['quote'] for r in candidate['evidence']}
+    ordered = []
+    for period in ('A', 'B'):
+        representative = next((m for m in material if m.get('period') == period), None)
+        if representative:
+            ordered.append(representative)
+    ordered += [m for m in material if (m['id'], m['version']) in refs]
+    # Round-robin dates/sources via the original ordered material, without prefix-only truncation.
+    ordered += material
+    result, seen, size = [], set(), 0
+    for m in ordered:
+        key = (m['id'], m['version'], m.get('period'))
+        if key in seen:
+            continue
+        seen.add(key)
+        excerpt = dict(m, text=refs.get((m['id'], m['version']), m['text'])[:min(1500, max(100, budget//4))])
+        length = len(encoded(excerpt))
+        if size + length <= budget:
+            result.append(excerpt)
+            size += length
+    periods = {m.get('period') for m in material if m.get('period')}
+    if not periods.issubset({m.get('period') for m in result}):
+        return None
+    return result
+
+
 def execute_run(repo, rid, provider):
     run = get_run(repo, rid)
     if run['status'] != 'queued':
@@ -76,8 +108,8 @@ def execute_run(repo, rid, provider):
         if not batches:
             _finish(repo, rid, 'insufficient', {'summary': '所选范围内没有可分析的用户发言。'})
             return
-        candidates, rejected, successes, failures = [], 0, 0, 0
-        allowed = {m['id'] for m in material}
+        candidates, rejected, successes, failures, unreviewed = [], 0, 0, 0, 0
+        allowed = {(m['id'], m['version']) for m in material}
         for batch in batches:
             if not _alive(repo, run):
                 return
@@ -94,12 +126,13 @@ def execute_run(repo, rid, provider):
                     try:
                         draft = InsightDraft.model_validate(raw)
                         checked = validate_evidence(repo, run['workspace_id'], draft.evidence)
-                        if not checked['valid'] or any(e.message_id not in allowed for e in draft.evidence):
+                        if not checked['valid'] or any((e.message_id, e.version) not in allowed for e in draft.evidence):
                             rejected += 1
                         else:
                             candidates.append(draft.model_dump())
                     except ValueError:
                         rejected += 1
+                unreviewed += max(0, len(response['insights']) - 30)
                 successes += 1
                 with repo.db.transaction() as c:
                     # Repeat version/state check inside the transaction to close deletion races.
@@ -112,39 +145,59 @@ def execute_run(repo, rid, provider):
                     c.execute('UPDATE analysis_runs SET completed_batches=?,rejected_candidates=? WHERE id=?', (successes, rejected, rid))
             except AppError:
                 failures += 1
-        accepted, summary, classification = 0, '当前资料未检索到反例；这不代表现实中不存在。', 'uncertain'
+        accepted_ids, reviewed_count = set(), 0
         if candidates and _alive(repo, run):
-            # Bounded review retrieves original excerpts from both supporting and other contexts.
-            review_material, review_size = [], 0
-            for item in material:
-                excerpt = dict(item, text=item['text'][:2500])
-                size = len(encoded(excerpt))
-                if review_size+size > MAX_CHARS:
-                    break
-                review_material.append(excerpt)
-                review_size += size
-            try:
-                reviewed = provider.complete_json(prompt('review', run['mode'], scope, review_material, candidates[:12], known), SCHEMA)
-                summary = str(reviewed.get('summary') or summary)[:3000]
-                classification = reviewed.get('classification', 'uncertain')
-                for raw in reviewed.get('insights', [])[:30]:
-                    if not _alive(repo, run):
-                        return
-                    refs = raw.get('evidence', []) if isinstance(raw, dict) else []
-                    if any(r.get('message_id') not in allowed for r in refs):
-                        rejected += 1
-                        continue
-                    outcome = save_insight(repo, rid, raw)
-                    accepted += int(outcome['accepted'])
-                    rejected += int(not outcome['accepted'])
-            except AppError:
-                failures += 1
+            # Aggregate repeated patterns across extraction batches, then review every group up to
+            # an explicit limit. Overflow is reported as partial, never silently successful.
+            merged = {}
+            for candidate in candidates:
+                key = candidate['pattern_key'].casefold().strip()
+                if key not in merged:
+                    merged[key] = candidate
+                else:
+                    refs = {encoded(r): r for r in merged[key]['evidence'] + candidate['evidence']}
+                    merged[key]['evidence'] = list(refs.values())[:30]
+            groups = list(merged.values())
+            unreviewed += max(0, len(groups) - MAX_REVIEWS)
+            for candidate in groups[:MAX_REVIEWS]:
+                if not _alive(repo, run):
+                    return
+                context = review_context(material, candidate)
+                if context is None:
+                    unreviewed += 1
+                    continue
+                try:
+                    reviewed = provider.complete_json(prompt('review', run['mode'], scope, context, [candidate], known), SCHEMA)
+                    if not isinstance(reviewed.get('insights'), list):
+                        raise AppError('provider_format', '复核结果格式无效。')
+                    reviewed_count += 1
+                    unreviewed += max(0, len(reviewed['insights']) - 30)
+                    for raw in reviewed['insights'][:30]:
+                        if not _alive(repo, run):
+                            return
+                        refs = raw.get('evidence', []) if isinstance(raw, dict) else []
+                        if any(not isinstance(r, dict) or (r.get('message_id'), r.get('version')) not in allowed for r in refs):
+                            rejected += 1
+                            continue
+                        outcome = save_insight(repo, rid, raw)
+                        if outcome['accepted']:
+                            accepted_ids.add(outcome['id'])
+                        else:
+                            rejected += 1
+                except AppError:
+                    failures += 1
         if not _alive(repo, run):
             return
         with repo.db.transaction() as c:
             c.execute('UPDATE analysis_runs SET rejected_candidates=? WHERE id=?', (rejected, rid))
-        status = 'partial' if failures and successes else ('failed' if failures else 'succeeded')
-        _finish(repo, rid, status, {'accepted': accepted, 'summary': summary, 'classification': classification,
+        findings = [i for i in list_insights(repo, run['workspace_id']) if i['id'] in accepted_ids and i['run_id'] == rid]
+        accepted = len(findings)
+        status = 'partial' if (failures or unreviewed) and successes else ('failed' if failures else ('succeeded' if accepted else 'insufficient'))
+        summary = f'本次保存了 {accepted} 项可回查、待本人确认的发现。' if accepted else '本次没有通过证据与范围校验的新发现；不能据此判断你没有相关经历。'
+        if unreviewed:
+            summary += f' 还有 {unreviewed} 项候选未复核，请缩小范围后重试。'
+        _finish(repo, rid, status, {'accepted': accepted, 'insights': findings, 'summary': summary, 'classification': 'uncertain',
+                                  'reviewed_candidates': reviewed_count, 'unreviewed_candidates': unreviewed,
                                   'scope': scope, 'note': '待本人确认；材料记录范围不等于现实全部经历。'}, run['data_version'])
     except Exception:
         # Deliberately omit exception text: HTTP errors and malformed data may contain secrets.

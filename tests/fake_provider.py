@@ -2,6 +2,7 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import threading
+import time
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -13,6 +14,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             body=json.loads(data['messages'][-1]['content'])
             material=body.get('untrusted_material',[])
+            if any('E2E_DELAY' in m['text'] for m in material):
+                time.sleep(8)
             refs=[{'message_id':m['id'],'version':m['version'],'quote':m['text'],'relation':'support'} for m in material[:2]]
             comparison=body.get('mode')=='comparison'
             draft={'pattern_key':'test-periods' if comparison else 'test-small-start','dimension':'change' if comparison else 'action_results',

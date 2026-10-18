@@ -35,5 +35,5 @@ def parse(source, filename, text):
                 if msg:
                     msgs.append(msg)
         if msgs:
-            conversations.append(ConversationInput(external_id=str(item.get('id') or item.get('uuid')), title=item.get('title') or item.get('name') or source, source=source, messages=msgs))
+            conversations.append(ConversationInput(external_id=str(item.get('id') or item.get('uuid')), title=item.get('title') or item.get('name') or source, source=source, messages=msgs, complete_snapshot=True))
     return ParseResult(conversations=conversations, warnings=[] if conversations else ['未找到受支持的导出会话。'])

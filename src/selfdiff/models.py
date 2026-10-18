@@ -25,6 +25,7 @@ class ConversationInput(StrictModel):
     source: SourceKind
     messages: list[MessageInput]
     branch_id: str | None = None
+    complete_snapshot: bool = False
 
 
 class ParseResult(StrictModel):

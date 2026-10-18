@@ -44,39 +44,48 @@ class Repository:
             raise AppError('changed', '资料在预览后发生变化，请重新预览。', 409)
         summary = dict(added_conversations=0, added_messages=0, updated_messages=0, unchanged_messages=0, warnings=preview.warnings)
         with self.db.transaction() as c:
+            membership_changed = False
             for item in preview.conversations:
                 row = c.execute('SELECT id FROM conversations WHERE workspace_id=? AND source=? AND external_id=?', (wid, item.source, item.external_id)).fetchone()
                 cid = row['id'] if row else uid()
                 if not row:
                     c.execute('INSERT INTO conversations(id,workspace_id,source,external_id,title,branch_id) VALUES(?,?,?,?,?,?)', (cid, wid, item.source, item.external_id, item.title, item.branch_id))
                     summary['added_conversations'] += 1
+                previous = {r['external_id'] for r in c.execute('SELECT external_id FROM messages WHERE conversation_id=? AND active=1', (cid,))}
+                if item.complete_snapshot:
+                    membership_changed |= previous != {m.external_id for m in item.messages}
+                    c.execute('UPDATE messages SET active=0 WHERE conversation_id=?', (cid,))
+                c.execute('UPDATE conversations SET title=?,branch_id=? WHERE id=?', (item.title, item.branch_id, cid))
                 for m in item.messages:
                     old = c.execute('SELECT m.id,m.active_version,v.digest FROM messages m JOIN message_versions v ON v.message_id=m.id AND v.version=m.active_version WHERE m.conversation_id=? AND m.external_id=?', (cid, m.external_id)).fetchone()
                     digest = sha256(encoded([m.text, m.role, m.content_kind, m.occurred_at]).encode()).hexdigest()
                     if old and old['digest'] == digest:
+                        c.execute('UPDATE messages SET active=1 WHERE id=?', (old['id'],))
                         summary['unchanged_messages'] += 1
                         continue
                     mid, version = (old['id'], old['active_version']+1) if old else (uid(), 1)
                     if old:
-                        c.execute('UPDATE messages SET active_version=?,role=?,content_kind=?,occurred_at=? WHERE id=?', (version, m.role, m.content_kind, m.occurred_at, mid))
+                        c.execute('UPDATE messages SET active=1,active_version=?,role=?,content_kind=?,occurred_at=? WHERE id=?', (version, m.role, m.content_kind, m.occurred_at, mid))
                         summary['updated_messages'] += 1
                     else:
                         c.execute('INSERT INTO messages(id,workspace_id,conversation_id,external_id,role,content_kind,occurred_at) VALUES(?,?,?,?,?,?,?)', (mid, wid, cid, m.external_id, m.role, m.content_kind, m.occurred_at))
                         summary['added_messages'] += 1
                     c.execute('INSERT INTO message_versions(message_id,workspace_id,version,text,digest,role,content_kind,occurred_at) VALUES(?,?,?,?,?,?,?,?)', (mid, wid, version, m.text, digest, m.role, m.content_kind, m.occurred_at))
-            if summary['added_messages'] or summary['updated_messages']:
+            if summary['added_messages'] or summary['updated_messages'] or membership_changed:
                 c.execute('UPDATE workspaces SET data_version=data_version+1 WHERE id=?', (wid,))
+                # Historical versions remain readable; current profiles must not rely on removed branches or replaced versions.
+                c.execute("UPDATE insights SET invalidated=1 WHERE workspace_id=? AND id IN (SELECT e.insight_id FROM evidence e JOIN messages m ON m.id=e.message_id WHERE m.active=0 OR e.version!=m.active_version)", (wid,))
             c.execute('INSERT INTO import_runs(id,workspace_id,summary) VALUES(?,?,?)', (uid(), wid, encoded(summary)))
         return summary
 
     def conversations(self, wid):
         self.workspace(wid)
         with self.db.transaction() as c:
-            return [dict(r) for r in c.execute('SELECT c.*,count(m.id) message_count,min(m.occurred_at) first_at,max(m.occurred_at) last_at FROM conversations c LEFT JOIN messages m ON m.conversation_id=c.id WHERE c.workspace_id=? GROUP BY c.id ORDER BY last_at DESC,c.id', (wid,))]
+            return [dict(r) for r in c.execute('SELECT c.*,count(m.id) message_count,min(m.occurred_at) first_at,max(m.occurred_at) last_at FROM conversations c LEFT JOIN messages m ON m.conversation_id=c.id AND m.active=1 WHERE c.workspace_id=? GROUP BY c.id ORDER BY last_at DESC,c.id', (wid,))]
 
     def messages(self, wid, query='', cursor=0, limit=1000, conversation_id=None, scope=None):
         self.workspace(wid)
-        sql = 'SELECT m.id,m.conversation_id,m.role,m.content_kind,m.occurred_at,m.active_version version,v.text,c.source,c.title,c.external_id conversation_external_id,c.branch_id FROM messages m JOIN message_versions v ON v.message_id=m.id AND v.version=m.active_version JOIN conversations c ON c.id=m.conversation_id WHERE m.workspace_id=?'
+        sql = 'SELECT m.id,m.conversation_id,m.role,m.content_kind,m.occurred_at,m.active_version version,v.text,c.source,c.title,c.external_id conversation_external_id,c.branch_id FROM messages m JOIN message_versions v ON v.message_id=m.id AND v.version=m.active_version JOIN conversations c ON c.id=m.conversation_id WHERE m.workspace_id=? AND m.active=1'
         args = [wid]
         if query:
             sql += ' AND instr(lower(v.text),lower(?))>0'

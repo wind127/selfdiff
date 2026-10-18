@@ -29,6 +29,8 @@ class Database:
         with sqlite3.connect(self.path) as conn:
             conn.execute('PRAGMA journal_mode=WAL')
             conn.executescript(Path(__file__).with_name('schema.sql').read_text(encoding='utf-8'))
+            if 'active' not in {r[1] for r in conn.execute('PRAGMA table_info(messages)')}:
+                conn.execute('ALTER TABLE messages ADD COLUMN active INTEGER NOT NULL DEFAULT 1')
             columns = {r[1] for r in conn.execute('PRAGMA table_info(message_versions)')}
             for column, definition in [('role', "TEXT NOT NULL DEFAULT 'unknown'"), ('content_kind', "TEXT NOT NULL DEFAULT 'uncertain'"), ('occurred_at', 'TEXT')]:
                 if column not in columns:
