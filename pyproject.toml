@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "selfdiff"
-version = "0.1.0"
+version = "0.1.1"
 description = "A local, evidence-backed personal profile from your AI conversations"
 readme = "README.en.md"
 requires-python = ">=3.10"

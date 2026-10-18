@@ -2,10 +2,10 @@
 
 ## 运行发布包
 
-安装 Python 3.10+，从 [v0.1.0 Release](https://github.com/wind127/selfdiff/releases/tag/v0.1.0) 下载 `selfdiff-0.1.0-py3-none-any.whl`，在下载目录执行：
+安装 Python 3.10+，从 [v0.1.1 Release](https://github.com/wind127/selfdiff/releases/tag/v0.1.1) 下载 `selfdiff-0.1.1-py3-none-any.whl`，在下载目录执行：
 
 ```sh
-python -m pip install selfdiff-0.1.0-py3-none-any.whl
+python -m pip install selfdiff-0.1.1-py3-none-any.whl
 python -m selfdiff.cli serve
 ```
 

@@ -29,7 +29,7 @@ The demo is entirely authored synthetic material. It is stored separately from y
 Python 3.10+ is required. The wheel includes the built UI; end users do not need Node.js.
 
 ```sh
-python -m pip install https://github.com/wind127/selfdiff/releases/download/v0.1.0/selfdiff-0.1.0-py3-none-any.whl
+python -m pip install https://github.com/wind127/selfdiff/releases/download/v0.1.1/selfdiff-0.1.1-py3-none-any.whl
 python -m selfdiff.cli serve
 ```
 

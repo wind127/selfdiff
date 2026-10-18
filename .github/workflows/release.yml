@@ -7,6 +7,7 @@ on:
         required: true
         type: choice
         options:
+          - v0.1.1
           - v0.1.0
 permissions:
   contents: read
@@ -39,7 +40,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          sha256sum dist/*.whl dist/*.tar.gz > dist/SHA256SUMS.txt
+          (cd dist && sha256sum *.whl *.tar.gz > SHA256SUMS.txt)
           if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "SelfDiff · 见己 $RELEASE_TAG" --notes-file "docs/releases/$RELEASE_TAG.md"
           fi
