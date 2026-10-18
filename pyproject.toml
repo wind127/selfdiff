@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=77,<85"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "selfdiff"
+version = "0.1.0"
+description = "A local, evidence-backed personal profile from your AI conversations"
+readme = "README.en.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{name = "SelfDiff contributors"}]
+dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "httpx>=0.28,<1", "pydantic>=2.10,<3", "python-multipart>=0.0.20,<1"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10", "build>=1.2,<2"]
+
+[project.scripts]
+selfdiff = "selfdiff.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+selfdiff = ["store/*.sql", "data/*.json", "static/*", "static/assets/*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
