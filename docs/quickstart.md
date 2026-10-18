@@ -1,5 +1,13 @@
 # 快速开始
 
+## 交给 AI 安装
+
+将这段提示词复制给具备终端操作能力的 AI 助手：
+
+```text
+请帮我安装并启动 SelfDiff（https://github.com/wind127/selfdiff）。按当前系统和最新 README 准备 Python 3.10+ 和独立虚拟环境，安装最新 Release 的 wheel，启动本机服务并打开合成示例，最后给我访问地址和重启命令。
+```
+
 ## 运行发布包
 
 安装 Python 3.10+，从 [v0.1.1 Release](https://github.com/wind127/selfdiff/releases/tag/v0.1.1) 下载 `selfdiff-0.1.1-py3-none-any.whl`，在下载目录执行：

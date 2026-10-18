@@ -26,6 +26,14 @@
 - **可控导出**：JSON、Markdown 完整档案；另行选择、编辑和确认后下载不附原话的 HTML 分享卡。
 - **无需密钥的合成示例**：独立资料空间；自己的导入不会混入示例结论。
 
+## 一句话安装（交给 AI）
+
+复制给具备终端操作能力的 Codex、Claude Code 等 AI 助手：
+
+```text
+请帮我安装并启动 SelfDiff（https://github.com/wind127/selfdiff）。按当前系统和最新 README 准备 Python 3.10+ 和独立虚拟环境，安装最新 Release 的 wheel，启动本机服务并打开合成示例，最后给我访问地址和重启命令。
+```
+
 ## 立即运行
 
 需要 Python 3.10+。发布 wheel 已包含界面，使用者无需 Node.js。

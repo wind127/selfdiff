@@ -24,6 +24,14 @@ The demo is entirely authored synthetic material. It is stored separately from y
 - Full JSON/Markdown exports; separate, explicitly reviewed HTML share cards without automatic raw quotes or source links.
 - Single-worker analysis with progress, cancellation, interruption handling and coverage reporting.
 
+## Install with an AI assistant
+
+Copy this prompt into a terminal-capable assistant such as Codex or Claude Code:
+
+```text
+Install and launch SelfDiff on this computer (https://github.com/wind127/selfdiff). Follow the latest README for this OS, prepare Python 3.10+ and a dedicated virtual environment, install the latest release wheel, start the local server, and open the synthetic demo. Give me the access URL and restart command.
+```
+
 ## Run
 
 Python 3.10+ is required. The wheel includes the built UI; end users do not need Node.js.
