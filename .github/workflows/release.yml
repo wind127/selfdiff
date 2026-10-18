@@ -1,0 +1,50 @@
+name: publish release
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing verified release tag
+        required: true
+        type: choice
+        options:
+          - v0.1.0
+permissions:
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: python -m pip install -r requirements-dev.lock
+      - run: npm --prefix web ci
+      - run: python scripts/build_release.py
+      - run: python -m pip download -r requirements.lock -d .local/wheelhouse
+      - run: python scripts/smoke_install.py dist
+      - name: Publish verified packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha256sum dist/*.whl dist/*.tar.gz > dist/SHA256SUMS.txt
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "SelfDiff · 见己 $RELEASE_TAG" --notes-file "docs/releases/$RELEASE_TAG.md"
+          fi
+          gh release upload "$RELEASE_TAG" dist/*.whl dist/*.tar.gz dist/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: selfdiff-release
+          path: dist/*
