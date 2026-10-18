@@ -47,9 +47,14 @@ def remember(request, wid, preview):
     return preview.public()
 
 
+def require_personal(request, wid):
+    if request.app.state.repo.workspace(wid)['demo']:
+        raise AppError('demo_isolation', '示例空间不接收个人资料，请返回开始页选择“导入我的会话”。', 409)
+
+
 @router.post('/imports/preview')
 async def upload(request: Request, workspace_id: str, source: str, filename: str):
-    request.app.state.repo.workspace(workspace_id)
+    require_personal(request, workspace_id)
     data = bytearray()
     async for part in request.stream():
         data.extend(part)
@@ -61,7 +66,7 @@ async def upload(request: Request, workspace_id: str, source: str, filename: str
 
 @router.post('/imports/path-preview')
 def path_import(request: Request, body: PathBody):
-    request.app.state.repo.workspace(body.workspace_id)
+    require_personal(request, body.workspace_id)
     return remember(request, body.workspace_id, preview_path(body.source, Path(body.path)))
 
 

@@ -33,3 +33,13 @@ def test_demo_api_comparison_works_without_key(tmp_path):
         assert result.status_code==200
         run=client.get('/api/runs/'+result.json()['id'],params={'workspace_id':wid}).json()
         assert run['status']=='succeeded' and run['result']['demo']
+
+
+def test_demo_rejects_personal_imports(tmp_path):
+    from test_api import connected
+    from test_repository import sample
+    client,app=connected(tmp_path)
+    with client:
+        wid=client.post('/api/demo').json()['id']
+        response=client.post('/api/imports/preview',params={'workspace_id':wid,'source':'normalized','filename':'mine.json'},content=sample())
+        assert response.status_code==409

@@ -42,8 +42,14 @@ def prepare_analysis(repo, scope):
 
 
 def _alive(repo, run):
-    return (get_run(repo, run['id'])['status'] == 'running'
-            and repo.workspace(run['workspace_id'])['data_version'] == run['data_version'])
+    with repo.db.transaction() as c:
+        row = c.execute('SELECT r.status,w.data_version FROM analysis_runs r JOIN workspaces w ON w.id=r.workspace_id WHERE r.id=?', (run['id'],)).fetchone()
+        if row['status'] != 'running':
+            return False
+        if row['data_version'] != run['data_version']:
+            c.execute("UPDATE analysis_runs SET status='interrupted',error='source_updated' WHERE id=?", (run['id'],))
+            return False
+        return True
 
 
 def execute_run(repo, rid, provider):
@@ -75,7 +81,7 @@ def execute_run(repo, rid, provider):
         for batch in batches:
             if not _alive(repo, run):
                 return
-            digest = sha256(encoded([run['mode'], scope, batch, provider.__class__.__name__, getattr(provider, 'model', '')]).encode()).hexdigest()
+            digest = sha256(encoded([run['mode'], scope, batch, provider.__class__.__name__, getattr(provider, 'model', ''), getattr(provider, 'base_url', '')]).encode()).hexdigest()
             with repo.db.transaction() as c:
                 cached = c.execute('SELECT payload FROM analysis_batches WHERE workspace_id=? AND input_hash=? LIMIT 1', (run['workspace_id'], digest)).fetchone()
             try:

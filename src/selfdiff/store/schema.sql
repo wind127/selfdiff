@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS messages (
  FOREIGN KEY(conversation_id,workspace_id) REFERENCES conversations(id,workspace_id) ON DELETE CASCADE);
 CREATE TABLE IF NOT EXISTS message_versions (
  message_id TEXT NOT NULL, workspace_id TEXT NOT NULL, version INTEGER NOT NULL,
- text TEXT NOT NULL, digest TEXT NOT NULL, PRIMARY KEY(message_id,version),
+ text TEXT NOT NULL, digest TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'unknown',
+ content_kind TEXT NOT NULL DEFAULT 'uncertain', occurred_at TEXT, PRIMARY KEY(message_id,version),
  UNIQUE(message_id,version,workspace_id),
  FOREIGN KEY(message_id,workspace_id) REFERENCES messages(id,workspace_id) ON DELETE CASCADE);
 CREATE TABLE IF NOT EXISTS import_runs (

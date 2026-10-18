@@ -62,7 +62,7 @@ def list_insights(repo, wid, include_rejected=False):
             if r['status'] == 'rejected' and not include_rejected:
                 continue
             data = dict(json.loads(r['content']), id=r['id'], status=r['status'], revision=r['revision'])
-            data['evidence'] = [dict(e) for e in c.execute('SELECT e.message_id,e.version,e.quote,e.relation,m.occurred_at,m.conversation_id,c.title,c.source FROM evidence e JOIN messages m ON m.id=e.message_id JOIN conversations c ON c.id=m.conversation_id WHERE e.insight_id=?', (r['id'],))]
+            data['evidence'] = [dict(e) for e in c.execute('SELECT e.message_id,e.version,e.quote,e.relation,v.occurred_at,m.conversation_id,c.title,c.source FROM evidence e JOIN messages m ON m.id=e.message_id JOIN message_versions v ON v.message_id=e.message_id AND v.version=e.version JOIN conversations c ON c.id=m.conversation_id WHERE e.insight_id=?', (r['id'],))]
             data['history'] = [dict(h) for h in c.execute('SELECT version,verdict,text,reason,origin,created_at FROM insight_revisions WHERE insight_id=? ORDER BY version', (r['id'],))]
             data['user_text'] = data['history'][-1]['text'] if data['history'] else ''
             result.append(data)

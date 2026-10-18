@@ -35,8 +35,9 @@ class Repository:
                 raise AppError('not_found', '资料空间不存在。', 404)
             return dict(row)
 
-    def import_preview(self, wid, preview):
-        self.workspace(wid)
+    def import_preview(self, wid, preview, *, allow_demo_seed=False):
+        if self.workspace(wid)['demo'] and not allow_demo_seed:
+            raise AppError('demo_isolation', '示例空间不能导入个人资料，请返回开始页选择“导入我的会话”。', 409)
         if time.time() - preview.created_at > 1800:
             raise AppError('expired', '预览已过期，请重新选择资料。')
         if preview.path and preview_path(preview.source, preview.path).input_hash != preview.input_hash:
@@ -62,7 +63,7 @@ class Repository:
                     else:
                         c.execute('INSERT INTO messages(id,workspace_id,conversation_id,external_id,role,content_kind,occurred_at) VALUES(?,?,?,?,?,?,?)', (mid, wid, cid, m.external_id, m.role, m.content_kind, m.occurred_at))
                         summary['added_messages'] += 1
-                    c.execute('INSERT INTO message_versions(message_id,workspace_id,version,text,digest) VALUES(?,?,?,?,?)', (mid, wid, version, m.text, digest))
+                    c.execute('INSERT INTO message_versions(message_id,workspace_id,version,text,digest,role,content_kind,occurred_at) VALUES(?,?,?,?,?,?,?,?)', (mid, wid, version, m.text, digest, m.role, m.content_kind, m.occurred_at))
             if summary['added_messages'] or summary['updated_messages']:
                 c.execute('UPDATE workspaces SET data_version=data_version+1 WHERE id=?', (wid,))
             c.execute('INSERT INTO import_runs(id,workspace_id,summary) VALUES(?,?,?)', (uid(), wid, encoded(summary)))
@@ -98,8 +99,12 @@ class Repository:
 
     def message(self, wid, mid, version):
         with self.db.transaction() as c:
-            row = c.execute('SELECT m.*,v.text,v.version,c.source,c.title,c.branch_id,c.external_id conversation_external_id FROM messages m JOIN message_versions v ON v.message_id=m.id JOIN conversations c ON c.id=m.conversation_id WHERE m.workspace_id=? AND m.id=? AND v.version=?', (wid, mid, version)).fetchone()
-            return dict(row) if row else None
+            row = c.execute('SELECT m.*,v.text,v.version,v.role version_role,v.content_kind version_kind,v.occurred_at version_time,c.source,c.title,c.branch_id,c.external_id conversation_external_id FROM messages m JOIN message_versions v ON v.message_id=m.id JOIN conversations c ON c.id=m.conversation_id WHERE m.workspace_id=? AND m.id=? AND v.version=?', (wid, mid, version)).fetchone()
+            if not row:
+                return None
+            result = dict(row)
+            result.update(role=result.pop('version_role'), content_kind=result.pop('version_kind'), occurred_at=result.pop('version_time'))
+            return result
 
     def delete_conversation(self, wid, cid):
         with self.db.transaction() as c:

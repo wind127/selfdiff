@@ -1,0 +1,9 @@
+include README.md README.en.md LICENSE CONTRIBUTING.md requirements.lock requirements-dev.lock
+include web/package.json web/package-lock.json web/tsconfig.json web/vite.config.ts web/playwright.config.ts web/index.html
+recursive-include web/src *.ts *.tsx *.css
+recursive-include web/e2e *.ts
+recursive-include src/selfdiff *.sql *.json *.html *.css *.js
+recursive-include tests *.py
+recursive-include scripts *.py
+recursive-include docs *.md *.png
+include .github/workflows/ci.yml

@@ -19,7 +19,7 @@ def create_demo_workspace(repo):
     preview = preview_upload('normalized', 'demo.json', encoded({'conversations':conversations}).encode())
     for i, conversation in enumerate(preview.conversations):
         conversation.source = ['codex','claude-code','workbuddy'][i % 3]
-    repo.import_preview(wid, preview)
+    repo.import_preview(wid, preview, allow_demo_seed=True)
     rid = create_run(repo, {'workspace_id':wid})
     with repo.db.transaction() as c:
         c.execute("UPDATE analysis_runs SET status='running',total_batches=1,completed_batches=1 WHERE id=?", (rid,))

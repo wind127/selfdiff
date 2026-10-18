@@ -1,4 +1,5 @@
 import os
+from urllib.parse import urlsplit
 from fastapi import APIRouter, Request
 from pydantic import Field
 from selfdiff.models import StrictModel, Scope
@@ -33,6 +34,12 @@ def settings(request, wid=None):
             row = c.execute('SELECT base_url,model FROM provider_settings WHERE workspace_id=?', (wid,)).fetchone()
         if row:
             base_url, model = row['base_url'], row['model']
+    try:
+        parts = urlsplit(base_url)
+        if parts.username or parts.password or parts.query or parts.fragment:
+            base_url = ''
+    except ValueError:
+        base_url = ''
     return {'base_url': base_url, 'model': model, 'configured': bool(base_url and model), 'key_configured': bool(os.environ.get('SELFDIFF_API_KEY'))}
 
 

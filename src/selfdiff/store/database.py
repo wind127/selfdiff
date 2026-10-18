@@ -29,3 +29,10 @@ class Database:
         with sqlite3.connect(self.path) as conn:
             conn.execute('PRAGMA journal_mode=WAL')
             conn.executescript(Path(__file__).with_name('schema.sql').read_text(encoding='utf-8'))
+            columns = {r[1] for r in conn.execute('PRAGMA table_info(message_versions)')}
+            for column, definition in [('role', "TEXT NOT NULL DEFAULT 'unknown'"), ('content_kind', "TEXT NOT NULL DEFAULT 'uncertain'"), ('occurred_at', 'TEXT')]:
+                if column not in columns:
+                    conn.execute(f'ALTER TABLE message_versions ADD COLUMN {column} {definition}')
+            if 'role' not in columns:
+                # Only the current version has recoverable speaker metadata in early local builds.
+                conn.execute('UPDATE message_versions SET role=(SELECT role FROM messages WHERE id=message_id),content_kind=(SELECT content_kind FROM messages WHERE id=message_id),occurred_at=(SELECT occurred_at FROM messages WHERE id=message_id) WHERE version=(SELECT active_version FROM messages WHERE id=message_id)')
